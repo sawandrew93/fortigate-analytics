@@ -25,24 +25,49 @@ services:
       resources:
         limits:
           memory: 4g
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+
+  # ==========================================
+  # AUTOMATION SETUP CONTAINER (Runs once, then exits)
+  # ==========================================
+  setup:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
+    container_name: setup
+    user: "0"
+    command: >
+      bash -c '
+        echo "Waiting for Elasticsearch cluster to be healthy..."
+        until curl -s -u elastic:${ELASTIC_PASSWORD} http://elasticsearch:9200/_cluster/health | grep -q -E "green|yellow"; do
+          sleep 2
+        done
+        
+        echo "Elasticsearch is healthy! Setting kibana_system password automatically..."
+        curl -s -u elastic:${ELASTIC_PASSWORD} -X POST http://elasticsearch:9200/_security/user/kibana_system/_password \
+          -H "Content-Type: application/json" \
+          -d "{\"password\":\"${KIBANA_PASSWORD}\"}"
+          
+        echo "Kibana password auto-configuration complete!"
+      '
+    networks:
+      - elastic-net
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
 
   kibana:
     image: docker.elastic.co/kibana/kibana:8.13.0
     container_name: kibana
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
-      - ELASTICSEARCH_USERNAME=kibana_system        # <-- Switched from "elastic"
-      - ELASTICSEARCH_PASSWORD=${KIBANA_PASSWORD}   # <-- Pointing to the Kibana system password
+      - ELASTICSEARCH_USERNAME=kibana_system
+      - ELASTICSEARCH_PASSWORD=${KIBANA_PASSWORD}
     ports:
       - "5601:5601"
+    # Kibana will wait specifically for the setup container to finish its job
     depends_on:
       elasticsearch:
         condition: service_healthy
+      setup:
+        condition: service_completed_successfully
     networks:
       - elastic-net
     restart: unless-stopped
@@ -56,11 +81,6 @@ services:
       resources:
         limits:
           memory: 1g
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
 
   filebeat:
     image: docker.elastic.co/beats/filebeat:8.13.0
@@ -93,11 +113,6 @@ services:
       resources:
         limits:
           memory: 500m
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
 
 volumes:
   es_data:
