@@ -1,0 +1,16 @@
+filebeat.modules:
+  - module: fortinet
+    firewall:
+      enabled: true
+      var.input: udp
+      var.syslog_host: 0.0.0.0
+      var.syslog_port: 5140
+
+setup.dashboards.enabled: true
+setup.kibana:
+  host: "http://kibana:5601"
+
+output.elasticsearch:
+  hosts: ["http://elasticsearch:9200"]
+  username: "elastic"
+  password: "vanguard@929"
